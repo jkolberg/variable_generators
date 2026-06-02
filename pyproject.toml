@@ -31,6 +31,9 @@ pandana = ["pandana>=0.1"]
 [project.urls]
 Homepage = "https://github.com/udst/variable_generators"
 
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["variable_generators"]
 
