@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "variable_generators"
+version = "0.1"
+description = "Bulk definition of explanatory variables for UrbanSim"
+readme = "README.md"
+license = { file = "LICENSE.txt" }
+requires-python = ">=3.10"
+authors = [
+    { name = "UrbanSim Inc.", email = "info@urbansim.com" },
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "numpy>=1.1",
+    "pandas>=2.0,<3.0",
+    "orca",
+    "urbansim",
+]
+
+[project.optional-dependencies]
+pandana = ["pandana>=0.1"]
+
+[project.urls]
+Homepage = "https://github.com/udst/variable_generators"
+
+[tool.uv.sources]
+urbansim = { git = "https://github.com/stefancoe/urbansim", branch = "transition_updates" }
+orca = { git = "https://github.com/stefancoe/orca" }
+
+[tool.hatch.build.targets.wheel]
+packages = ["variable_generators"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "variable_generators",
+    "CHANGELOG.md",
+    "LICENSE.txt",
+    "README.md",
+]

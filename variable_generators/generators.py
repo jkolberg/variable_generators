@@ -52,8 +52,8 @@ def make_agg_var(agent, geog, geog_id, var_to_aggregate, agg_function, how_filln
             if agg_function == 'sum':
                 series = series.fillna(0)
             else:
-                series = series.fillna(method='ffill')
-                series = series.fillna(method='bfill')
+                series = series.ffill()
+                series = series.bfill()
 
         return series
 
