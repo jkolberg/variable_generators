@@ -21,8 +21,8 @@ classifiers = [
 dependencies = [
     "numpy>=1.1",
     "pandas>=2.0,<3.0",
-    "orca",
-    "urbansim",
+    "orca @ git+https://github.com/stefancoe/orca.git",
+    "urbansim @ git+https://github.com/stefancoe/urbansim.git@transition_updates",
 ]
 
 [project.optional-dependencies]
@@ -30,10 +30,6 @@ pandana = ["pandana>=0.1"]
 
 [project.urls]
 Homepage = "https://github.com/udst/variable_generators"
-
-[tool.uv.sources]
-urbansim = { git = "https://github.com/stefancoe/urbansim", branch = "transition_updates" }
-orca = { git = "https://github.com/stefancoe/orca" }
 
 [tool.hatch.build.targets.wheel]
 packages = ["variable_generators"]
