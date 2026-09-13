@@ -1,7 +1,11 @@
 from __future__ import print_function
+import re
 
 import numpy as np
 import pandas as pd
+import operator
+import re
+from typing import Any, Callable
 
 import orca
 
@@ -13,6 +17,16 @@ try:
 except ImportError:
     pass
 
+COMPARISONS: dict[str, Callable[[Any, Any], Any]] = {
+    ">": operator.gt,
+    ">=": operator.ge,
+    "<": operator.lt,
+    "<=": operator.le,
+    "==": operator.eq,
+    "!=": operator.ne,
+}
+
+_IDENTIFIER = re.compile(r"[A-Za-z_]\w*")
 
 def make_agg_var(agent, geog, geog_id, var_to_aggregate, agg_function, how_fillna=None):
     """
@@ -229,5 +243,148 @@ def make_access_var(name, agent, target_variable=False, target_value=False,
         if log:
             nodes[name] = nodes[name].apply(eval('np.log1p'))
         return nodes[name]
+
+    return func
+
+
+def _finalize(series: pd.Series, fillna: Any = None, clip_lower: Any = None, dtype: str | None = None) -> pd.Series:
+    if fillna is not None:
+        series = series.fillna(fillna)
+    if clip_lower is not None:
+        series = series.clip(lower=clip_lower)
+    if dtype is not None:
+        series = series.astype(dtype)
+    return series
+
+
+def _resolve_operand(table_name: str, spec: Any) -> pd.Series:
+    """Resolve an arithmetic operand: a column name, a scalar, or a {count_of, key} agent tally."""
+    if isinstance(spec, dict):
+        agent = orca.get_table(spec["count_of"])
+        return agent[spec["key"]].value_counts()
+    if isinstance(spec, str):
+        return orca.get_table(table_name)[spec]
+    return spec
+
+
+def make_join_var(table, var_name, from_table, from_column, on=None,
+                  fillna=0, dtype=None, cache=True, cache_scope="iteration"):
+    """Generator function for attaching a column from another table. Registers with orca.
+
+    `on=None` aligns on the target table's index; otherwise `on` names a key column on the
+    target table holding `from_table`'s index values.
+    """
+
+    @orca.column(table, var_name, cache=cache, cache_scope=cache_scope)
+    def func():
+        print(f"Joining {from_column} onto {table} from {from_table}")
+        source = orca.get_table(from_table)[from_column]
+        target = orca.get_table(table)
+        if on is None:
+            series = source.reindex(target.index)
+        else:
+            series = misc.reindex(source, target[on])
+        return _finalize(series, fillna=fillna, dtype=dtype)
+
+    return func
+
+
+def make_difference_var(table, var_name, minuend, subtrahend, fill_value=0,
+                        clip_lower=None, dtype=None, cache=False, cache_scope="step"):
+    """Generator function for a difference of two operands. Registers with orca."""
+
+    @orca.column(table, var_name, cache=cache, cache_scope=cache_scope)
+    def func():
+        print(f"Calculating {var_name} for {table}")
+        left = _resolve_operand(table, minuend)
+        right = _resolve_operand(table, subtrahend)
+        series = left.sub(right, fill_value=fill_value) if isinstance(left, pd.Series) else left - right
+        return _finalize(series, clip_lower=clip_lower, dtype=dtype)
+
+    return func
+
+
+def make_sum_var(table, var_name, operands, fill_value=0, dtype=None,
+                 cache=False, cache_scope="step"):
+    """Generator function for a sum of two or more operands. Registers with orca."""
+
+    @orca.column(table, var_name, cache=cache, cache_scope=cache_scope)
+    def func():
+        print(f"Calculating {var_name} for {table}")
+        series = _resolve_operand(table, operands[0])
+        for spec in operands[1:]:
+            other = _resolve_operand(table, spec)
+            series = series.add(other, fill_value=fill_value) if isinstance(series, pd.Series) else series + other
+        return _finalize(series, dtype=dtype)
+
+    return func
+
+
+def make_quantile_var(table, var_name, source, bins, offset=0, dtype=None,
+                      cache=True, cache_scope="iteration"):
+    """Generator function for quantile bins of a column. Registers with orca."""
+
+    @orca.column(table, var_name, cache=cache, cache_scope=cache_scope)
+    def func():
+        print(f"Calculating {var_name} for {table}")
+        series = pd.qcut(orca.get_table(table)[source], bins, labels=False) + offset
+        return _finalize(series, dtype=dtype)
+
+    return func
+
+
+def make_map_var(table, var_name, source, mapping, fillna=None, dtype=None,
+                 cache=True, cache_scope="iteration"):
+    """Generator function for recoding a column through a lookup. Registers with orca."""
+
+    @orca.column(table, var_name, cache=cache, cache_scope=cache_scope)
+    def func():
+        print(f"Calculating {var_name} for {table}")
+        series = orca.get_table(table)[source].map(mapping)
+        return _finalize(series, fillna=fillna, dtype=dtype)
+
+    return func
+
+
+def make_threshold_var(table, var_name, source, op, value, dtype="int8",
+                       cache=True, cache_scope="iteration"):
+    """Generator function for a 0/1 dummy from a comparison. Registers with orca."""
+    if op not in COMPARISONS:
+        raise ValueError(f"{var_name}: unsupported comparison {op!r}; expected one of {sorted(COMPARISONS)}")
+
+    @orca.column(table, var_name, cache=cache, cache_scope=cache_scope)
+    def func():
+        print(f"Calculating {var_name} for {table}")
+        series = COMPARISONS[op](orca.get_table(table)[source], value)
+        return _finalize(series, dtype=dtype)
+
+    return func
+
+
+def make_constant_var(table, var_name, value, dtype="int32", cache=True, cache_scope="iteration"):
+    """Generator function for a constant-valued column. Registers with orca."""
+
+    @orca.column(table, var_name, cache=cache, cache_scope=cache_scope)
+    def func():
+        index = orca.get_table(table).index
+        return _finalize(pd.Series(np.full(len(index), value), index=index), dtype=dtype)
+
+    return func
+
+
+def make_expression_var(table, var_name, expr, dtype=None, cache=True, cache_scope="iteration"):
+    """Generator function for a pandas expression over the table's own columns. Registers with orca.
+
+    Evaluated with DataFrame.eval, which parses to a restricted expression AST -- never builtin eval.
+    """
+
+    @orca.column(table, var_name, cache=cache, cache_scope=cache_scope)
+    def func():
+        print(f"Calculating {var_name} for {table}")
+        target = orca.get_table(table)
+        referenced = [c for c in dict.fromkeys(_IDENTIFIER.findall(expr)) if c in target.columns]
+        df = target.to_frame(referenced)
+        series = df.eval(expr, global_dict={}, local_dict={})
+        return _finalize(series, dtype=dtype)
 
     return func
