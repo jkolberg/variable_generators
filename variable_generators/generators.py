@@ -289,15 +289,15 @@ def make_join_var(table, var_name, from_table, from_column, on=None,
     return func
 
 
-def make_difference_var(table, var_name, minuend, subtrahend, fill_value=0,
+def make_difference_var(table, var_name, subtract_from, subtract, fill_value=0,
                         clip_lower=None, dtype=None, cache=False, cache_scope="step"):
     """Generator function for a difference of two operands. Registers with orca."""
 
     @orca.column(table, var_name, cache=cache, cache_scope=cache_scope)
     def func():
         print(f"Calculating {var_name} for {table}")
-        left = _resolve_operand(table, minuend)
-        right = _resolve_operand(table, subtrahend)
+        left = _resolve_operand(table, subtract_from)
+        right = _resolve_operand(table, subtract)
         series = left.sub(right, fill_value=fill_value) if isinstance(left, pd.Series) else left - right
         return _finalize(series, clip_lower=clip_lower, dtype=dtype)
 
