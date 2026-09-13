@@ -372,6 +372,21 @@ def make_constant_var(table, var_name, value, dtype="int32", cache=True, cache_s
     return func
 
 
+def make_index_slice_var(table, var_name, start, stop, dtype="int64", cache=True, cache_scope="forever"):
+    """Generator function for an id carved out of the table's own index. Registers with orca.
+
+    Nesting geographies such as census blocks encode their parent ids as a prefix of the child id.
+    """
+
+    @orca.column(table, var_name, cache=cache, cache_scope=cache_scope)
+    def func():
+        index = orca.get_table(table).index
+        series = pd.Series(index.values, index=index).astype(str).str.slice(start, stop)
+        return _finalize(series, dtype=dtype)
+
+    return func
+
+
 def make_expression_var(table, var_name, expr, dtype=None, cache=True, cache_scope="iteration"):
     """Generator function for a pandas expression over the table's own columns. Registers with orca.
 
